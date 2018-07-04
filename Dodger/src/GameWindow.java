@@ -11,6 +11,8 @@ import javafx.stage.Stage;
 
 public class GameWindow {
 
+    public static int BLOCK_SPEED = 2;
+
     private static int WIDTH = 512;
     private static int HEIGHT = 512;
     private static int SCORE_X = 6;
@@ -18,6 +20,7 @@ public class GameWindow {
     private static int PAUSE_X = 224;
     private static int PAUSE_Y = 265;
     private static int SPAWN_RATE = 25;
+    private static int SPEED_RATE = 600;
     private static int DEATH_ANIM_TIME = 215;
     private static int BLINK_RATE = 20;
     private static Color BG_COLOR = Color.rgb(50, 50, 50);
@@ -28,7 +31,8 @@ public class GameWindow {
 
     private int frameCount;
     private int score, hiScore;
-    private int totalBlocks, deaths, destroyed;
+    private int totalBlocks, deaths, destroyed, powerupsCollected;
+    private int untilNextSpawn;
     private int playerSize, playerSpeed;
     private int playerX, playerY;
     private int blinkAnimCount;
@@ -37,6 +41,7 @@ public class GameWindow {
     private boolean blinking;
     private ArrayList<Block> blocks;
     private ArrayList<Laser> lasers, ammoLasers;
+    private ArrayList<Powerup> powerups;
     private ArrayList<String> keys;
 
     public GameWindow(Stage myStage) {
@@ -48,7 +53,6 @@ public class GameWindow {
 
         GraphicsContext gc = canvas.getGraphicsContext2D();
 
-        // ** Do this only for movement? -> Not lasers? **
         keys = new ArrayList<String>();
         scene.setOnKeyPressed(e -> {
             String keyStr = e.getCode().toString();
@@ -63,6 +67,8 @@ public class GameWindow {
                         ammoLasers.remove(ammoLasers.size() - 1);
                         ammo--;
                     }
+                } else if (keyStr.equals("P")) {
+                    //powerups.add(new Powerup());
                 }
             }
             if (keyStr.equals("ESCAPE")) {
@@ -82,6 +88,9 @@ public class GameWindow {
         totalBlocks = 0;
         deaths = 0;
         destroyed = 0;
+        powerupsCollected = 0;
+
+        untilNextSpawn = (int) (Math.random() * 1000 + 400);
 
         blinkAnimCount = 0;
         blinking = false;
@@ -91,7 +100,7 @@ public class GameWindow {
         playerX = (WIDTH / 2) - (playerSize / 2);
         playerY = HEIGHT - playerSize - 20;
 
-        ammo = 20;
+        ammo = 5;
         ammoLasers = new ArrayList<Laser>();
         for (int i=0; i < ammo; i++) {
             ammoLasers.add(new Laser(i));
@@ -101,6 +110,7 @@ public class GameWindow {
 
         blocks = new ArrayList<Block>();
         lasers = new ArrayList<Laser>();
+        powerups = new ArrayList<Powerup>();
 
         // Game loop - runs at (about) 60fps
         new AnimationTimer() {
@@ -114,6 +124,11 @@ public class GameWindow {
                 // Draw blocks
                 for (Block block : blocks) {
                     block.show(gc);
+                }
+
+                // Draw powerups
+                for (Powerup power : powerups) {
+                    power.show(gc);
                 }
 
                 // Draw player
@@ -141,10 +156,15 @@ public class GameWindow {
                 gc.fillText("Passed: " + totalBlocks, SCORE_X, SCORE_Y + 25);
                 gc.fillText("Deaths: " + deaths, SCORE_X, SCORE_Y + 50);
                 gc.fillText("Destroyed: " + destroyed, SCORE_X, SCORE_Y + 75);
+                gc.fillText("Powerups: " + powerupsCollected, SCORE_X, SCORE_Y + 100);
 
                 // Update if not paused
                 if (!paused) {
+
+                    // Inc framecount
                     frameCount++;
+
+                    // Move player if keys pressed
                     if (keys.size() > 0) {
                         String moveStr = keys.get(keys.size() - 1);
                         if (moveStr.equals("RIGHT")) {
@@ -153,9 +173,29 @@ public class GameWindow {
                             if (playerX > 0) playerX -= playerSpeed;
                         }
                     }
+
+                    // Add block on some frames
                     if (frameCount % SPAWN_RATE == 0) {
                         blocks.add(new Block());
                     }
+
+                    // Increase difficulty
+                    /*if (frameCount % SPEED_RATE == 0) {
+                        BLOCK_SPEED++;
+                        SPAWN_RATE -= 2;
+                        for (Block block : blocks) {
+                            block.incSpeed();
+                        }
+                    }*/
+
+                    // Spawn powerup on some frames
+                    untilNextSpawn--;
+                    if (untilNextSpawn == 0) {
+                        powerups.add(new Powerup());
+                        untilNextSpawn = (int) (Math.random() * 1000 + 400);
+                    }
+
+                    // Handle death animation
                     if (blinking) {
                         blinkAnimCount++;
                         if (blinkAnimCount > DEATH_ANIM_TIME) {
@@ -163,14 +203,22 @@ public class GameWindow {
                             blinkAnimCount = 0;
                         }
                     }
+
+                    // Check collisions with player, blocks, lasers, powerups
                     checkCollisions();
+
+                    // Update moving objects
                     updateBlocks();
                     updateLasers();
+                    updatePowerups();
+
                 } else {
+
                     // Draw 'Paused'
                     gc.setFill(TEXT_COLOR);
                     gc.setFont(SCORE_FONT);
                     gc.fillText("PAUSE", PAUSE_X, PAUSE_Y);
+
                 }
 
             }
@@ -185,26 +233,43 @@ public class GameWindow {
 
     private void checkCollisions() {
 
+        // Blocks + Player
         for (int i = blocks.size() - 1; i >= 0; i--) {
             if (blocks.get(i).collidesWith(playerX, playerY, playerSize)) {
                 if (!blinking) {
                     score = 0;
                     deaths++;
-                    totalBlocks--;
                     blinking = true;
                     blocks.remove(i);
                 }
             }
         }
 
+        // Blocks + Lasers
         for (int i = blocks.size() - 1; i >= 0; i--) {
             for (int j = lasers.size() - 1; j >= 0; j--) {
                 if (lasers.get(j).collidesWith(blocks.get(i))) {
                     blocks.remove(i);
                     lasers.remove(j);
                     score++;
+                    if (score > hiScore) hiScore = score;
                     totalBlocks++;
                     destroyed++;
+                }
+            }
+        }
+
+        // Powerups + Player
+        // Add ammo when powerup is collected
+        for (int i = powerups.size() - 1; i >= 0; i--) {
+            if (powerups.get(i).collidesWith(playerX, playerY, playerSize)) {
+                if (!blinking) {
+                    for (int j = 0; j < 5; j++) {
+                        ammoLasers.add(new Laser(ammo));
+                        ammo++;
+                    }
+                    powerups.remove(i);
+                    powerupsCollected++;
                 }
             }
         }
@@ -216,9 +281,11 @@ public class GameWindow {
             blocks.get(i).update();
             if (blocks.get(i).getY() > HEIGHT) {
                 blocks.remove(i);
-                if (!blinking) score++;
+                if (!blinking) {
+                    score++;
+                    totalBlocks++;
+                }
                 if (score > hiScore) hiScore = score;
-                totalBlocks++;
             }
         }
     }
@@ -229,6 +296,16 @@ public class GameWindow {
             // -30 is laser size, don't remove until fully off screen
             if (lasers.get(i).getY() < -30) {
                 lasers.remove(i);
+            }
+        }
+    }
+
+    private void updatePowerups() {
+        for (int i = powerups.size() - 1; i >= 0; i--) {
+            powerups.get(i).update();
+            // -30 is powerup size, don't remove until fully off screen
+            if (powerups.get(i).getY() < -30) {
+                powerups.remove(i);
             }
         }
     }

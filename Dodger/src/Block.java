@@ -12,7 +12,7 @@ public class Block {
         size = 40;
         x = (int) (Math.random() * (512 - size));
         y = -size;
-        speed = 2;
+        speed = GameWindow.BLOCK_SPEED;
     }
 
     public int getX() { return x; }
@@ -28,6 +28,10 @@ public class Block {
 
     public void update() {
         y += speed;
+    }
+
+    public void incSpeed() {
+        speed++;
     }
 
     // https://silentmatt.com/rectangle-intersection/
