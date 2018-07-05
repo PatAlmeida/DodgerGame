@@ -304,7 +304,7 @@ public class GameWindow {
         for (int i = powerups.size() - 1; i >= 0; i--) {
             powerups.get(i).update();
             // -30 is powerup size, don't remove until fully off screen
-            if (powerups.get(i).getY() < -30) {
+            if (powerups.get(i).getY() > HEIGHT) {
                 powerups.remove(i);
             }
         }
